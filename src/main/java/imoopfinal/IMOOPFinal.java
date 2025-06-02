@@ -6,71 +6,58 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 public class IMOOPFinal {
+
     public static void main(String[] args) {
-        // Ensure the SQLite database and necessary tables exist
         try (Connection conn = getConnection()) {
             createTables(conn);
-            System.out.println("Database tables created successfully.");
+            System.out.println("Database initialized.");
         } catch (SQLException e) {
-            System.err.println("Error initializing database: " + e.getMessage());
+            System.err.println("Database error: " + e.getMessage());
         }
 
-        // Launch the Login UI
         javax.swing.SwingUtilities.invokeLater(() -> new Login().setVisible(true));
     }
 
     private static void createTables(Connection conn) throws SQLException {
-        createUsersTable(conn);
-        createScheduleTable(conn);
-        createAppointmentsTable(conn);
-    }
-
-    private static void createUsersTable(Connection conn) throws SQLException {
-        String createUsersTable = "CREATE TABLE IF NOT EXISTS users (" +
-                "id INTEGER PRIMARY KEY AUTOINCREMENT," +
-                "username TEXT NOT NULL UNIQUE," +
-                "password TEXT NOT NULL," +
-                "email TEXT NOT NULL," +
-                "firstname TEXT NOT NULL," +
-                "lastname TEXT NOT NULL," +
-                "department TEXT NOT NULL," +
-                "usertype TEXT NOT NULL)";
         try (Statement stmt = conn.createStatement()) {
-            stmt.execute(createUsersTable);
-        }
-    }
 
-    private static void createScheduleTable(Connection conn) throws SQLException {
-        String createScheduleTable = "CREATE TABLE IF NOT EXISTS schedule (" +
-                "id INTEGER PRIMARY KEY AUTOINCREMENT," +
-                "teacher TEXT NOT NULL," +
-                "department TEXT NOT NULL," +
-                "date TEXT NOT NULL," +
-                "time TEXT NOT NULL," +
-                "year TEXT NOT NULL," +
-                "month TEXT NOT NULL)";
-        try (Statement stmt = conn.createStatement()) {
-            stmt.execute(createScheduleTable);
-        }
-    }
+            stmt.execute("CREATE TABLE IF NOT EXISTS users (" +
+    "id INT AUTO_INCREMENT PRIMARY KEY," +
+    "username VARCHAR(50) NOT NULL UNIQUE," +
+    "password VARCHAR(255) NOT NULL," +
+    "email VARCHAR(100) NOT NULL," +
+    "firstname VARCHAR(50) NOT NULL," +
+    "lastname VARCHAR(50) NOT NULL," +
+    "department VARCHAR(100) NOT NULL," +
+    "usertype VARCHAR(20) NOT NULL)");
 
-    private static void createAppointmentsTable(Connection conn) throws SQLException {
-        String createAppointmentsTable = "CREATE TABLE IF NOT EXISTS appointments (" +
-                "id INTEGER PRIMARY KEY AUTOINCREMENT," +
-                "student TEXT NOT NULL," +
-                "teacher TEXT NOT NULL," +
-                "date TEXT NOT NULL," +
-                "time TEXT NOT NULL," +
-                "year TEXT NOT NULL," +
-                "course TEXT NOT NULL," +
-                "month TEXT NOT NULL)";
-        try (Statement stmt = conn.createStatement()) {
-            stmt.execute(createAppointmentsTable);
+stmt.execute("CREATE TABLE IF NOT EXISTS schedule (" +
+    "id INT AUTO_INCREMENT PRIMARY KEY," +
+    "teacher VARCHAR(100) NOT NULL," +
+    "department VARCHAR(100) NOT NULL," +
+    "date DATE NOT NULL," +
+    "time TIME NOT NULL," +
+    "year VARCHAR(4) NOT NULL," +
+    "month VARCHAR(10) NOT NULL)"+
+    "slots INT NOT NULL");
+
+stmt.execute("CREATE TABLE IF NOT EXISTS appointments (" +
+    "id INT AUTO_INCREMENT PRIMARY KEY," +
+    "student VARCHAR(100) NOT NULL," +
+    "teacher VARCHAR(100) NOT NULL," +
+    "date DATE NOT NULL," +
+    "time TIME NOT NULL," +
+    "year VARCHAR(4) NOT NULL," +
+    "course VARCHAR(100) NOT NULL," +
+    "month VARCHAR(10) NOT NULL)");
+
         }
     }
 
     public static Connection getConnection() throws SQLException {
-        String URL = "jdbc:sqlite:testDB.db";
-        return DriverManager.getConnection(URL);
+        String url = "jdbc:mysql://localhost:3306/imoopdb"; // Make sure 'imoopdb' exists
+        String user = "root"; // Your MySQL username
+        String password = ""; // Default password for XAMPP's MySQL root is empty
+        return DriverManager.getConnection(url, user, password);
     }
 }

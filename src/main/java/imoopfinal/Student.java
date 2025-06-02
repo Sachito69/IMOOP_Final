@@ -28,6 +28,7 @@ public class Student extends JFrame {
         setSize(630, 700);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
+        setVisible(true); // you could add this here too
 
         // Initialize the department-courses map
         departmentCoursesMap = new HashMap<>();
@@ -80,7 +81,7 @@ public class Student extends JFrame {
         panel.add(courseComboBox, gbc);
 
         // Populate the course combo box based on the initial department
-        updateCourseComboBox(department);
+        updateCourseComboBox(department);  // This should add other items but "Choose a Course" stays selected
 
         // Teacher combo box
         JLabel teacherLabel = new JLabel("Teacher:");
@@ -89,9 +90,11 @@ public class Student extends JFrame {
         panel.add(teacherLabel, gbc);
 
         teacherComboBox = new JComboBox<>();
+        teacherComboBox.setPreferredSize(new Dimension(150, 25));
         gbc.gridx = 1;
         gbc.gridy = 3;
         panel.add(teacherComboBox, gbc);
+
 
         JLabel scheduleLabel = new JLabel("Teacher's Schedule:");
         gbc.gridx = 0;
@@ -99,7 +102,7 @@ public class Student extends JFrame {
         gbc.gridwidth = 2;
         panel.add(scheduleLabel, gbc);
 
-        scheduleTableModel = new DefaultTableModel(new Object[]{"Date", "Time"}, 0);
+        scheduleTableModel = new DefaultTableModel(new Object[]{"Date", "Time", "Available Slots"}, 0);
         scheduleTable = new JTable(scheduleTableModel);
         JScrollPane scheduleScrollPane = new JScrollPane(scheduleTable);
         scheduleScrollPane.setPreferredSize(new Dimension(500, 180));
@@ -147,62 +150,92 @@ public class Student extends JFrame {
         add(panel);
 
         // Book button action listener
-        bookButton.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                String studentName = studentNameField.getText().trim();
-                String teacherName = (String) teacherComboBox.getSelectedItem();
-                int selectedRow = scheduleTable.getSelectedRow();
+    bookButton.addActionListener(new ActionListener() {
+    @Override
+    public void actionPerformed(ActionEvent e) {
+        String studentName = studentNameField.getText().trim();
+        String teacherName = (String) teacherComboBox.getSelectedItem();
+        int selectedRow = scheduleTable.getSelectedRow();
 
-                if (teacherName == null || selectedRow == -1) {
-                    JOptionPane.showMessageDialog(Student.this, "Please select a time slot to book an appointment.", "Error", JOptionPane.ERROR_MESSAGE);
-                    return;
-                }
+        if (teacherName == null || selectedRow == -1) {
+            JOptionPane.showMessageDialog(Student.this, "Please select a time slot to book an appointment.", "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
 
-                String date = (String) scheduleTableModel.getValueAt(selectedRow, 0);
-                String time = (String) scheduleTableModel.getValueAt(selectedRow, 1);
-                String course = (String) courseComboBox.getSelectedItem();
+        String date = (String) scheduleTableModel.getValueAt(selectedRow, 0);
+        String time = (String) scheduleTableModel.getValueAt(selectedRow, 1);
+        String course = (String) courseComboBox.getSelectedItem();
 
-                try (Connection conn = IMOOPFinal.getConnection()) {
-                    String year = null;
-                    String month = null;
+        try (Connection conn = IMOOPFinal.getConnection()) {
+            conn.setAutoCommit(false); // Start transaction
 
-                    String query = "SELECT year, month FROM schedule WHERE teacher = ? AND date = ? AND time = ?";
-                    try (PreparedStatement pstmt = conn.prepareStatement(query)) {
-                        pstmt.setString(1, teacherName);
-                        pstmt.setString(2, date);
-                        pstmt.setString(3, time);
-                        try (ResultSet rs = pstmt.executeQuery()) {
-                            if (rs.next()) {
-                                year = rs.getString("year");
-                                month = rs.getString("month");
-                            }
-                        }
-                    }
-
-                    if (year == null || month == null) {
-                        JOptionPane.showMessageDialog(Student.this, "Error retrieving year and month information.", "Error", JOptionPane.ERROR_MESSAGE);
+            // Check if appointment already exists
+            String checkQuery = "SELECT * FROM appointments WHERE student = ? AND teacher = ? AND date = ? AND time = ?";
+            try (PreparedStatement checkStmt = conn.prepareStatement(checkQuery)) {
+                checkStmt.setString(1, studentName);
+                checkStmt.setString(2, teacherName);
+                checkStmt.setString(3, date);
+                checkStmt.setString(4, time);
+                try (ResultSet rs = checkStmt.executeQuery()) {
+                    if (rs.next()) {
+                        JOptionPane.showMessageDialog(Student.this, "You already have an appointment for this slot.", "Duplicate", JOptionPane.WARNING_MESSAGE);
                         return;
                     }
-
-                    String sql = "INSERT INTO appointments (student, teacher, date, time, year, month, course) VALUES (?, ?, ?, ?, ?, ?, ?)";
-                    try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
-                        pstmt.setString(1, studentName);
-                        pstmt.setString(2, teacherName);
-                        pstmt.setString(3, date);
-                        pstmt.setString(4, time);
-                        pstmt.setString(5, year);
-                        pstmt.setString(6, month);
-                        pstmt.setString(7, course);
-                        pstmt.executeUpdate();
-                        JOptionPane.showMessageDialog(Student.this, "Appointment booked successfully.", "Success", JOptionPane.INFORMATION_MESSAGE);
-                        loadAppointments();
-                    }
-                } catch (SQLException ex) {
-                    JOptionPane.showMessageDialog(Student.this, "Error booking appointment: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
                 }
             }
-        });
+
+            // Get year and month from schedule
+            String year = null, month = null;
+            String query = "SELECT year, month FROM schedule WHERE teacher = ? AND date = ? AND time = ?";
+            try (PreparedStatement pstmt = conn.prepareStatement(query)) {
+                pstmt.setString(1, teacherName);
+                pstmt.setString(2, date);
+                pstmt.setString(3, time);
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    if (rs.next()) {
+                        year = rs.getString("year");
+                        month = rs.getString("month");
+                    }
+                }
+            }
+
+            if (year == null || month == null) {
+                JOptionPane.showMessageDialog(Student.this, "Error retrieving year and month information.", "Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+
+            // Insert appointment
+            String insertSQL = "INSERT INTO appointments (student, teacher, date, time, year, month, course) VALUES (?, ?, ?, ?, ?, ?, ?)";
+            try (PreparedStatement insertStmt = conn.prepareStatement(insertSQL)) {
+                insertStmt.setString(1, studentName);
+                insertStmt.setString(2, teacherName);
+                insertStmt.setString(3, date);
+                insertStmt.setString(4, time);
+                insertStmt.setString(5, year);
+                insertStmt.setString(6, month);
+                insertStmt.setString(7, course);
+                insertStmt.executeUpdate();
+            }
+
+            // Update slots in schedule table
+            String updateSlotsSQL = "UPDATE schedule SET slots = slots - 1 WHERE teacher = ? AND date = ? AND time = ?";
+            try (PreparedStatement updateStmt = conn.prepareStatement(updateSlotsSQL)) {
+                updateStmt.setString(1, teacherName);
+                updateStmt.setString(2, date);
+                updateStmt.setString(3, time);
+                updateStmt.executeUpdate();
+            }
+
+            conn.commit(); // Commit transaction
+            JOptionPane.showMessageDialog(Student.this, "Appointment booked successfully.", "Success", JOptionPane.INFORMATION_MESSAGE);
+            loadAppointments();
+            loadSchedule();
+
+        } catch (SQLException ex) {
+            JOptionPane.showMessageDialog(Student.this, "Error booking appointment: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+});
 
         // Teacher combo box action listener
         teacherComboBox.addActionListener(new ActionListener() {
@@ -292,21 +325,27 @@ public class Student extends JFrame {
     }
 
     private void updateCourseComboBox(String department) {
-        courseComboBox.removeAllItems();
-        String[] courses = departmentCoursesMap.get(department);
-        if (courses != null) {
-            for (String course : courses) {
-                courseComboBox.addItem(course);
-            }
+    courseComboBox.removeAllItems();
+    courseComboBox.addItem("Choose a Course"); // Add prompt as first item
+
+    String[] courses = departmentCoursesMap.get(department);
+    if (courses != null) {
+        for (String course : courses) {
+            courseComboBox.addItem(course);
         }
     }
 
- private void loadTeachers(String studentDepartment) {
+    courseComboBox.setSelectedIndex(0); // Ensure the prompt stays selected
+}
+
+    private void loadTeachers(String studentDepartment) {
     teacherComboBox.removeAllItems();
+    teacherComboBox.addItem("Choose a Teacher"); // Add default prompt
+
     try (Connection conn = IMOOPFinal.getConnection()) {
         String sql = "SELECT DISTINCT teacher FROM schedule WHERE department = ?";
         try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, studentDepartment); // Set the department parameter in the SQL query
+            pstmt.setString(1, studentDepartment); // Set the department parameter
             try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
                     teacherComboBox.addItem(rs.getString("teacher"));
@@ -316,28 +355,38 @@ public class Student extends JFrame {
     } catch (SQLException ex) {
         JOptionPane.showMessageDialog(this, "Error loading teachers: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
     }
+
+    teacherComboBox.setSelectedIndex(0); // Keep the prompt selected
 }
 
-
     private void loadSchedule() {
-        scheduleTableModel.setRowCount(0);
-        try (Connection conn = IMOOPFinal.getConnection()) {
-            String sql = "SELECT DISTINCT date, time, year, month FROM schedule WHERE teacher = ?";
-            String selectedTeacher = (String) teacherComboBox.getSelectedItem();
-            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
-                pstmt.setString(1, selectedTeacher);
-                try (ResultSet rs = pstmt.executeQuery()) {
-                    while (rs.next()) {
-                        String date = rs.getString("date");
-                        String time = rs.getString("time");
-                        scheduleTableModel.addRow(new Object[]{date, time});
-                    }
+    scheduleTableModel.setRowCount(0);
+    try (Connection conn = IMOOPFinal.getConnection()) {
+        String sql = "SELECT s.date, s.time, s.year, s.month, s.slots, " +
+                     "(SELECT COUNT(*) FROM appointments a WHERE a.teacher = s.teacher AND a.date = s.date AND a.time = s.time) AS booked " +
+                     "FROM schedule s WHERE s.teacher = ? AND s.slots > 0";
+        
+        String selectedTeacher = (String) teacherComboBox.getSelectedItem();
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, selectedTeacher);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    String date = rs.getString("date");
+                    String time = rs.getString("time");
+                    int booked = rs.getInt("booked");
+                    int availableSlots = rs.getInt("slots"); // you can use this directly if you want raw slots
+
+                    // If you still want to show how many more can be booked (e.g., based on a limit like 5), you could do:
+                    // int availableSlots = rs.getInt("slots") - booked;
+
+                    scheduleTableModel.addRow(new Object[]{date, time, availableSlots});
                 }
             }
-        } catch (SQLException ex) {
-            JOptionPane.showMessageDialog(this, "Error loading schedule: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
+    } catch (SQLException ex) {
+        JOptionPane.showMessageDialog(this, "Error loading schedule: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
     }
+}
 
     private void loadAppointments() {
         appointmentTableModel.setRowCount(0);
